@@ -1,257 +1,354 @@
-import { useEffect, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useEffect, useMemo, useState } from "react";
+import { useNavigate, useParams } from "react-router-dom";
 import { useAuth } from "../store/auth";
 import { makeSocket } from "../lib/socket";
 
-const TOPICS = ["arrays", "strings", "dp", "graphs", "trees"];
-const MIN_MINUTES = 1;
-const MAX_MINUTES = 120;
+/* ----------------- Helpers ----------------- */
+function formatMMSS(ms) {
+  const t = Math.max(0, Math.floor(ms / 1000));
+  const m = Math.floor(t / 60);
+  const s = t % 60;
+  return `${m}:${String(s).padStart(2, "0")}`;
+}
 
-function Field({ label, children, hint }) {
+/* ----------------- Premium UI ----------------- */
+function GlowBG() {
   return (
-    <div>
-      <label className="text-sm text-white/70">{label}</label>
-      <div className="mt-2">{children}</div>
-      {hint && <p className="text-xs text-white/45 mt-2">{hint}</p>}
+    <div className="pointer-events-none absolute inset-0 overflow-hidden">
+      <div className="absolute -top-40 -left-40 h-[520px] w-[520px] rounded-full bg-fuchsia-600/20 blur-3xl" />
+      <div className="absolute top-10 right-[-120px] h-[520px] w-[520px] rounded-full bg-indigo-600/20 blur-3xl" />
+      <div className="absolute bottom-[-220px] left-[20%] h-[520px] w-[520px] rounded-full bg-cyan-500/10 blur-3xl" />
+      <div className="absolute inset-0 bg-gradient-to-b from-black/30 via-black/40 to-black/70" />
     </div>
   );
 }
 
-function GlowShell({ children }) {
+function GlassCard({ children, className = "" }) {
   return (
-    <div className="relative overflow-hidden rounded-3xl border border-white/10 bg-white/[0.06] shadow-[0_30px_120px_-60px_rgba(0,0,0,0.9)] backdrop-blur">
-      <div className="pointer-events-none absolute inset-0 opacity-70">
-        <div className="absolute -top-24 -right-24 h-64 w-64 rounded-full bg-fuchsia-500/20 blur-3xl" />
-        <div className="absolute -bottom-24 -left-24 h-64 w-64 rounded-full bg-indigo-500/20 blur-3xl" />
-      </div>
-      <div className="relative z-10">{children}</div>
+    <div
+      className={`relative rounded-3xl border border-white/10 bg-white/[0.06] backdrop-blur shadow-xl ${className}`}
+    >
+      {children}
     </div>
   );
 }
 
-function SocketPill({ status }) {
-  const s = String(status || "").toLowerCase();
-  const tone =
-    s === "connected"
-      ? "border-emerald-500/25 bg-emerald-500/10 text-emerald-200"
-      : s.includes("error")
-      ? "border-rose-500/25 bg-rose-500/10 text-rose-200"
-      : "border-white/10 bg-white/5 text-white/70";
-
-  return (
-    <div className={`text-xs px-3 py-2 rounded-2xl border ${tone} whitespace-nowrap`}>
-      Socket: <span className="font-semibold">{status}</span>
-    </div>
-  );
-}
-
-export default function CreateRoom() {
+/* ----------------- Component ----------------- */
+export default function Lobby() {
+  const { roomId } = useParams();
   const nav = useNavigate();
-  const { token } = useAuth();
-  const socketRef = useRef(null);
+  const { token, user } = useAuth();
 
-  const [status, setStatus] = useState("connecting...");
+  const socket = useMemo(() => (token ? makeSocket(token) : null), [token]);
+
+  const [room, setRoom] = useState(null);
   const [err, setErr] = useState("");
+  const [cancelMsg, setCancelMsg] = useState("");
+  const [status, setStatus] = useState("connecting...");
+  const [lobbyClosesAtMs, setLobbyClosesAtMs] = useState(0);
+  const [timeLeftMs, setTimeLeftMs] = useState(0);
 
-  const [topic, setTopic] = useState("");
-  const [questionCount, setQuestionCount] = useState("3");
-  const [maxPlayers, setMaxPlayers] = useState("2");
-  const [timerMinutes, setTimerMinutes] = useState("10");
+  const playersCount = room?.players?.length || 0;
+  const maxPlayers = room?.maxPlayers || 0;
+  const minPlayers = room?.minPlayersToStart || 2;
 
+  const isHost = !!room?.hostUser?.userId && room.hostUser.userId === user?.id;
+  const canHostStart =
+    isHost && String(room?.status || "").toUpperCase() === "WAITING" && playersCount >= minPlayers;
+
+  const readyMe = () => socket?.emit("player:ready", { roomId, ready: true });
+  const notReady = () => socket?.emit("player:ready", { roomId, ready: false });
+
+  const startBattleHost = () => {
+    setErr("");
+    setCancelMsg("");
+    if (!socket) return setErr("Socket not connected");
+    if (!canHostStart) return setErr(`Need minimum ${minPlayers} players to start`);
+
+    socket.emit("battle:start", { roomId }, (ack) => {
+      if (!ack?.ok) return setErr(ack?.message || "Start failed");
+      // server will emit battle:started + room:update
+    });
+  };
+
+  /* ----------------- Socket Logic ----------------- */
   useEffect(() => {
-    if (!token) return;
+    if (!socket) return;
 
-    const socket = makeSocket(token);
-    socketRef.current = socket;
+    const onConnect = () => setStatus("connected");
+    const onDisconnect = () => setStatus("disconnected");
+    const onConnectError = (e) => setErr(e?.message || "Socket error");
+    const onRoomError = (m) => setErr(String(m || "Room error"));
 
-    socket.on("connect", () => setStatus("connected"));
-    socket.on("disconnect", () => setStatus("disconnected"));
-    socket.on("connect_error", (e) => setStatus(e?.message || "connect_error"));
-    socket.on("room:error", (msg) => setErr(String(msg || "Room error")));
+    const onRoomUpdate = (r) => {
+      setRoom(r);
+      setErr("");
+
+      const st = String(r?.status || "").toUpperCase();
+      if (st === "ACTIVE") nav(`/battle/${roomId}`);
+      // ✅ don't auto navigate for CANCELLED here because we want to show message first
+    };
+
+    const onLobbyTimer = ({ lobbyClosesAtMs }) => {
+      setLobbyClosesAtMs(Number(lobbyClosesAtMs || 0));
+    };
+
+    const onBattleStarted = (startedRoom) => {
+      nav(`/battle/${startedRoom.roomId}`);
+    };
+
+    const onRoomCancelled = (msg) => {
+      // ✅ backend now sends a string reason
+      setCancelMsg(String(msg || "Room cancelled"));
+      // optional: redirect after 2 seconds
+      setTimeout(() => nav("/dashboard"), 1500);
+    };
+
+    socket.on("connect", onConnect);
+    socket.on("disconnect", onDisconnect);
+    socket.on("connect_error", onConnectError);
+    socket.on("room:error", onRoomError);
+
+    socket.on("room:update", onRoomUpdate);
+    socket.on("lobby:timer", onLobbyTimer);
+    socket.on("battle:started", onBattleStarted);
+    socket.on("room:cancelled", onRoomCancelled);
+
+    // ✅ BEST: just fetch state (server joins you into room)
+    socket.emit("room:get", { roomId }, (ack) => {
+      if (!ack?.ok) {
+        const msg = String(ack?.message || "Room not found");
+        setErr(msg);
+        return;
+      }
+      setRoom(ack.room);
+      setErr("");
+
+      const st = String(ack.room?.status || "").toUpperCase();
+      if (st === "ACTIVE") nav(`/battle/${roomId}`);
+      if (st === "CANCELLED" || st === "FINISHED") {
+        // show a bit then go dashboard
+        setTimeout(() => nav("/dashboard"), 600);
+      }
+    });
 
     return () => {
-      socket.off();
+      socket.off("connect", onConnect);
+      socket.off("disconnect", onDisconnect);
+      socket.off("connect_error", onConnectError);
+      socket.off("room:error", onRoomError);
+
+      socket.off("room:update", onRoomUpdate);
+      socket.off("lobby:timer", onLobbyTimer);
+      socket.off("battle:started", onBattleStarted);
+      socket.off("room:cancelled", onRoomCancelled);
+
       socket.disconnect();
-      socketRef.current = null;
     };
-  }, [token]);
+  }, [socket, roomId, nav]);
 
-  const validateCreate = () => {
-    if (!topic) return "Select topic";
-    const qc = Number(questionCount);
-    const mp = Number(maxPlayers);
-    const tm = Number(timerMinutes);
+  /* ----------------- Lobby countdown ----------------- */
+  useEffect(() => {
+    if (!lobbyClosesAtMs) {
+      setTimeLeftMs(0);
+      return;
+    }
+    const tick = () => setTimeLeftMs(lobbyClosesAtMs - Date.now());
+    tick();
+    const id = setInterval(tick, 250);
+    return () => clearInterval(id);
+  }, [lobbyClosesAtMs]);
 
-    if (!qc || qc < 1 || qc > 10) return "Question count must be 1 to 10";
-    if (!mp || mp < 2 || mp > 10) return "Max players must be 2 to 10";
-    if (!tm || tm < MIN_MINUTES || tm > MAX_MINUTES)
-      return `Timer must be ${MIN_MINUTES}-${MAX_MINUTES} minutes`;
-
-    return "";
-  };
-
-  const createRoom = () => {
-    setErr("");
-    const socket = socketRef.current;
-    if (!socket || !socket.connected) return setErr("Socket not connected");
-
-    const v = validateCreate();
-    if (v) return setErr(v);
-
-    socket.emit(
-      "room:create",
-      {
-        topic,
-        questionCount: Number(questionCount),
-        maxPlayers: Number(maxPlayers),
-        timerSeconds: Number(timerMinutes) * 60,
-      },
-      (ack) => {
-        if (!ack?.ok) return setErr(ack?.message || "Create failed");
-        nav(`/room/${ack.room.roomId}`);
-      }
-    );
-  };
-
-  const validationMsg = validateCreate();
-  const canCreate = !validationMsg;
-
+  /* ----------------- UI ----------------- */
   return (
-    <div className="relative min-h-[100svh] w-full bg-[#06060b] text-white overflow-hidden">
-      {/* Landing-style background */}
-      <div className="pointer-events-none absolute inset-0 overflow-hidden">
-        <div className="absolute -top-40 -left-40 h-[520px] w-[520px] rounded-full bg-fuchsia-600/20 blur-3xl" />
-        <div className="absolute top-10 right-[-120px] h-[520px] w-[520px] rounded-full bg-indigo-600/20 blur-3xl" />
-        <div className="absolute bottom-[-220px] left-[20%] h-[520px] w-[520px] rounded-full bg-cyan-500/10 blur-3xl" />
-        <div
-          className="absolute inset-0 opacity-[0.08]"
-          style={{
-            backgroundImage:
-              "linear-gradient(to right, rgba(255,255,255,0.2) 1px, transparent 1px), linear-gradient(to bottom, rgba(255,255,255,0.2) 1px, transparent 1px)",
-            backgroundSize: "44px 44px",
-          }}
-        />
-        <div className="absolute inset-0 bg-gradient-to-b from-black/30 via-black/40 to-black/70" />
-      </div>
+    <div className="relative min-h-[100svh] bg-[#06060b] text-white overflow-hidden">
+      <GlowBG />
 
-      {/* Content */}
-      <div className="relative z-10 max-w-3xl mx-auto px-4 sm:px-6 py-8 space-y-5">
-        {/* Header card */}
-        <GlowShell>
-          <div className="p-5 sm:p-6">
-            <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
-              <div className="min-w-0">
-                <div className="text-sm text-white/60">Room Setup</div>
-                <h1 className="mt-1 text-2xl sm:text-3xl font-extrabold tracking-tight">
-                  Create Room
-                </h1>
-                <p className="mt-2 text-sm text-white/65">
-                  Configure a battle room and share the code with your friend.
-                </p>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <SocketPill status={status} />
-              </div>
+      <div className="relative z-10 max-w-6xl mx-auto px-4 sm:px-6 py-8 space-y-6">
+        {/* Header */}
+        <GlassCard className="p-5 flex flex-col sm:flex-row justify-between gap-4">
+          <div>
+            <div className="text-2xl font-extrabold tracking-tight">Battle Lobby</div>
+            <div className="text-sm text-white/50 mt-1">
+              Room ID: <span className="text-white/80 font-semibold">{roomId}</span>
             </div>
 
-            {err ? (
-              <div className="mt-4 rounded-2xl border border-rose-500/20 bg-rose-500/10 p-3 text-sm text-rose-200">
+            {cancelMsg && (
+              <div className="mt-3 rounded-2xl border border-amber-500/20 bg-amber-500/10 p-3 text-amber-200 text-sm">
+                {cancelMsg}
+              </div>
+            )}
+
+            {err && (
+              <div className="mt-3 rounded-2xl border border-rose-500/20 bg-rose-500/10 p-3 text-rose-200 text-sm">
                 {err}
-              </div>
-            ) : !canCreate ? (
-              <div className="mt-4 rounded-2xl border border-amber-500/20 bg-amber-500/10 p-3 text-sm text-amber-200">
-                {validationMsg}
-              </div>
-            ) : (
-              <div className="mt-4 rounded-2xl border border-white/10 bg-white/5 p-3 text-sm text-white/65">
-                Tip: Choose a topic, then set count/players/timer — and hit{" "}
-                <b className="text-white">Create Room</b>.
               </div>
             )}
           </div>
-        </GlowShell>
 
-        {/* Form card */}
-        <GlowShell>
-          <div className="p-5 sm:p-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="md:col-span-2">
-                <Field label="Topic" hint="Choose the topic set for random problems.">
-                  <select
-                    className="w-full h-12 px-4 rounded-2xl bg-black/30 border border-white/10 outline-none focus:border-fuchsia-400/60"
-                    value={topic}
-                    onChange={(e) => setTopic(e.target.value)}
-                  >
-                    <option value="">Select topic</option>
-                    {TOPICS.map((t) => (
-                      <option key={t} value={t}>
-                        {t}
-                      </option>
-                    ))}
-                  </select>
-                </Field>
+          <div className="flex gap-3 items-center">
+            <div className="text-sm bg-black/40 border border-white/10 rounded-2xl px-4 py-2">
+              <div className="text-white/50 text-xs">Lobby Ends In</div>
+              <div className="font-bold">
+                {lobbyClosesAtMs ? formatMMSS(timeLeftMs) : "--:--"}
               </div>
-
-              <Field label="Question Count" hint="1 to 10 problems per battle.">
-                <input
-                  className="w-full h-12 px-4 rounded-2xl bg-black/30 border border-white/10 outline-none focus:border-fuchsia-400/60"
-                  type="number"
-                  value={questionCount}
-                  onChange={(e) => setQuestionCount(e.target.value)}
-                  min={1}
-                  max={10}
-                />
-              </Field>
-
-              <Field label="Max Players" hint="2 to 10 players.">
-                <input
-                  className="w-full h-12 px-4 rounded-2xl bg-black/30 border border-white/10 outline-none focus:border-fuchsia-400/60"
-                  type="number"
-                  value={maxPlayers}
-                  onChange={(e) => setMaxPlayers(e.target.value)}
-                  min={2}
-                  max={10}
-                />
-              </Field>
-
-              <div className="md:col-span-2">
-                <Field label="Timer (minutes)" hint={`Allowed: ${MIN_MINUTES}-${MAX_MINUTES} minutes`}>
-                  <input
-                    className="w-full h-12 px-4 rounded-2xl bg-black/30 border border-white/10 outline-none focus:border-fuchsia-400/60"
-                    type="number"
-                    value={timerMinutes}
-                    onChange={(e) => setTimerMinutes(e.target.value)}
-                    min={MIN_MINUTES}
-                    max={MAX_MINUTES}
-                  />
-                </Field>
-              </div>
-
-              {/* Buttons */}
-              <div className="md:col-span-2 flex flex-col sm:flex-row gap-2 pt-1">
-                <button
-                  onClick={createRoom}
-                  disabled={!canCreate}
-                  className="w-full sm:flex-1 h-12 rounded-2xl bg-gradient-to-r from-fuchsia-500 to-indigo-500 font-semibold shadow-lg shadow-fuchsia-500/20 hover:opacity-95 disabled:opacity-50"
-                >
-                  Create Room
-                </button>
-
-                <button
-                  onClick={() => nav("/dashboard")}
-                  className="w-full sm:w-auto h-12 px-5 rounded-2xl bg-white/10 border border-white/10 hover:bg-white/15 font-semibold"
-                >
-                  Back
-                </button>
-              </div>
+              <div className="text-[11px] text-white/40 mt-1">Socket: {status}</div>
             </div>
 
-            <div className="mt-4 text-xs text-white/45">
-              After creation, you will be redirected to Lobby (<code>/room/:roomId</code>).
+            <button
+              onClick={() => {
+                // proper leave
+                socket?.emit("room:leave", { roomId }, () => nav("/dashboard"));
+                setTimeout(() => nav("/dashboard"), 300);
+              }}
+              className="h-11 px-4 rounded-2xl bg-white text-black font-semibold hover:bg-white/90"
+            >
+              Exit
+            </button>
+          </div>
+        </GlassCard>
+
+        {/* Room Code */}
+        <GlassCard className="p-8 text-center">
+          <div className="text-sm text-white/50 mb-3">Share this Room Code</div>
+
+          <div className="flex flex-col sm:flex-row justify-center items-center gap-4">
+            <div className="px-8 py-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/30">
+              <span className="text-5xl font-extrabold tracking-widest text-emerald-300">
+                {roomId}
+              </span>
+            </div>
+
+            <button
+              onClick={() => navigator.clipboard?.writeText?.(roomId)}
+              className="h-12 px-5 rounded-2xl bg-white/10 border border-white/10 hover:bg-white/20 font-semibold"
+            >
+              Copy
+            </button>
+          </div>
+        </GlassCard>
+
+        {/* Ready + Host Start */}
+        <GlassCard className="p-6 flex flex-col md:flex-row justify-between gap-4">
+          <div>
+            <div className="text-lg font-bold">Ready Up</div>
+            <div className="text-sm text-white/50">
+              Auto-start happens only when FULL + ALL READY. Host can also start after minimum players.
+            </div>
+            <div className="mt-2 text-xs text-white/45">
+              Minimum players required: <b>{minPlayers}</b>
             </div>
           </div>
-        </GlowShell>
+
+          <div className="flex flex-wrap gap-3">
+            <button
+              onClick={readyMe}
+              className="h-11 px-5 rounded-2xl bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 font-semibold"
+            >
+              Ready
+            </button>
+
+            <button
+              onClick={notReady}
+              className="h-11 px-5 rounded-2xl bg-white/10 border border-white/10 font-semibold"
+            >
+              Not Ready
+            </button>
+
+            {/* ✅ Host Start */}
+            {isHost && (
+              <button
+                onClick={startBattleHost}
+                disabled={!canHostStart}
+                className="h-11 px-5 rounded-2xl bg-white text-black font-semibold hover:bg-white/90 disabled:opacity-60"
+              >
+                Start Battle
+              </button>
+            )}
+          </div>
+        </GlassCard>
+
+        {/* Players + Settings */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {/* Players */}
+          <GlassCard className="p-6">
+            <div className="flex justify-between mb-4">
+              <div className="text-lg font-bold">Players</div>
+              <div className="text-sm text-white/50">
+                {playersCount}/{maxPlayers}
+              </div>
+            </div>
+
+            {!room?.players?.length ? (
+              <div className="text-white/50 text-sm">Waiting for players...</div>
+            ) : (
+              <div className="space-y-3">
+                {room.players.map((p) => {
+                  const isReady = !!room.ready?.[p.userId];
+                  const isYou = p.userId === user?.id;
+                  const hostTag = p.userId === room.hostUser?.userId;
+
+                  return (
+                    <div
+                      key={p.userId}
+                      className="flex justify-between items-center bg-black/30 border border-white/10 rounded-2xl px-4 py-3"
+                    >
+                      <div className="min-w-0">
+                        <div className="font-semibold truncate">
+                          {p.email}{" "}
+                          {isYou && <span className="text-white/50">(you)</span>}{" "}
+                          {hostTag && <span className="text-fuchsia-300">(host)</span>}
+                        </div>
+                        <div className="text-xs text-white/40 truncate">{p.userId}</div>
+                      </div>
+
+                      <div
+                        className={`text-xs font-bold px-3 py-1 rounded-full ${
+                          isReady
+                            ? "bg-emerald-500/20 text-emerald-300"
+                            : "bg-white/10 text-white/60"
+                        }`}
+                      >
+                        {isReady ? "READY" : "NOT READY"}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </GlassCard>
+
+          {/* Room Settings */}
+          <GlassCard className="p-6">
+            <div className="text-lg font-bold mb-4">Room Settings</div>
+
+            {!room ? (
+              <div className="text-white/50 text-sm">Loading...</div>
+            ) : (
+              <div className="space-y-3 text-sm">
+                <div className="bg-black/30 border border-white/10 rounded-xl p-3">
+                  Topic: <span className="font-semibold">{room.topic}</span>
+                </div>
+                <div className="bg-black/30 border border-white/10 rounded-xl p-3">
+                  Questions: <span className="font-semibold">{room.questionCount}</span>
+                </div>
+                <div className="bg-black/30 border border-white/10 rounded-xl p-3">
+                  Battle Timer:{" "}
+                  <span className="font-semibold">
+                    {Math.round((room.timerSeconds || 0) / 60)} min
+                  </span>
+                </div>
+                <div className="bg-black/30 border border-white/10 rounded-xl p-3">
+                  Status: <span className="font-semibold">{room.status}</span>
+                </div>
+              </div>
+            )}
+          </GlassCard>
+        </div>
+
+        <div className="text-xs text-white/40 text-center">
+          Tip: Share the room code so your friend can join from dashboard.
+        </div>
       </div>
     </div>
   );

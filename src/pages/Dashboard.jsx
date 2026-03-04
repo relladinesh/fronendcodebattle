@@ -112,8 +112,11 @@ export default function Dashboard() {
   const [q, setQ] = useState("");
   const [status, setStatus] = useState("ALL");
 
-  // ✅ pagination controls
-  const [pageSize, setPageSize] = useState(5); // default 5
+  // ✅ NEW: how many battles fetched from backend (5 / 20 / 50)
+  const [fetchLimit, setFetchLimit] = useState(5);
+
+  // ✅ pagination ALWAYS 5 per page
+  const PAGE_SIZE = 5;
   const [page, setPage] = useState(1);
 
   // join room
@@ -141,7 +144,7 @@ export default function Dashboard() {
     };
   }, [token, nav]);
 
-  // ✅ LOAD HISTORY FUNCTION
+  // ✅ LOAD HISTORY FUNCTION (fix)
   async function loadHistory(limit = 5) {
     try {
       setErr("");
@@ -152,20 +155,20 @@ export default function Dashboard() {
         setBattles([]);
         setErr(res?.message || "Failed to load history");
         setHistoryLoaded(true);
-        setPageSize(limit);
+        setFetchLimit(limit);
         setPage(1);
         return;
       }
 
       setBattles(res.battles);
       setHistoryLoaded(true);
-      setPageSize(limit);
+      setFetchLimit(limit);
       setPage(1);
     } catch (e) {
       setErr(e?.message || "Failed to load history");
       setBattles([]);
       setHistoryLoaded(true);
-      setPageSize(limit);
+      setFetchLimit(limit);
       setPage(1);
     } finally {
       setLoading(false);
@@ -198,16 +201,16 @@ export default function Dashboard() {
     });
   }, [battles, q, status]);
 
-  // ✅ pagination derived
+  // ✅ pagination derived (5 per page always)
   const totalItems = filtered.length;
-  const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
+  const totalPages = Math.max(1, Math.ceil(totalItems / PAGE_SIZE));
 
   useEffect(() => {
     if (page > totalPages) setPage(1);
   }, [totalPages, page]);
 
-  const pageStart = (page - 1) * pageSize;
-  const pageEnd = pageStart + pageSize;
+  const pageStart = (page - 1) * PAGE_SIZE;
+  const pageEnd = pageStart + PAGE_SIZE;
   const pagedBattles = filtered.slice(pageStart, pageEnd);
 
   const joinRoom = () => {
@@ -226,6 +229,8 @@ export default function Dashboard() {
       nav(`/room/${code}`);
     });
   };
+
+  const showPagination = historyLoaded && !loading && fetchLimit > 5 && totalItems > 0;
 
   return (
     <div className="relative min-h-[100svh] bg-[#06060b] text-white overflow-hidden">
@@ -278,7 +283,7 @@ export default function Dashboard() {
               </div>
 
               <button
-                onClick={() => loadHistory(pageSize)}
+                onClick={() => loadHistory(fetchLimit)}
                 disabled={loading}
                 className="h-10 px-4 rounded-2xl bg-white/10 border border-white/10 font-semibold hover:bg-white/15 disabled:opacity-60"
               >
@@ -320,7 +325,7 @@ export default function Dashboard() {
                   <div>
                     <div className="text-lg font-bold">Battle History</div>
                     <div className="text-sm text-white/60">
-                      Auto-loads recent 5. Load 20/50 when you need more.
+                      Auto-loads recent 5. Load 20/50 to enable pagination (5 per page).
                     </div>
                   </div>
 
@@ -346,13 +351,19 @@ export default function Dashboard() {
                 <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-3">
                   <input
                     value={q}
-                    onChange={(e) => setQ(e.target.value)}
+                    onChange={(e) => {
+                      setQ(e.target.value);
+                      setPage(1);
+                    }}
                     placeholder="Search by topic, room, winner..."
                     className="md:col-span-2 h-11 px-4 rounded-2xl bg-black/30 border border-white/10 outline-none focus:border-fuchsia-400/60"
                   />
                   <select
                     value={status}
-                    onChange={(e) => setStatus(e.target.value)}
+                    onChange={(e) => {
+                      setStatus(e.target.value);
+                      setPage(1);
+                    }}
                     className="h-11 px-3 rounded-2xl bg-black/30 border border-white/10 outline-none focus:border-fuchsia-400/60"
                   >
                     <option value="ALL">All</option>
@@ -366,7 +377,14 @@ export default function Dashboard() {
                 {/* quick filter chips */}
                 <div className="mt-3 flex flex-wrap gap-2">
                   {["ALL", "FINISHED", "ACTIVE", "WAITING", "CANCELLED"].map((st) => (
-                    <Chip key={st} active={status === st} onClick={() => setStatus(st)}>
+                    <Chip
+                      key={st}
+                      active={status === st}
+                      onClick={() => {
+                        setStatus(st);
+                        setPage(1);
+                      }}
+                    >
                       {st}
                     </Chip>
                   ))}
@@ -397,7 +415,7 @@ export default function Dashboard() {
                     <div className="p-8 text-center text-white/60">No battles found.</div>
                   ) : (
                     <div className="divide-y divide-white/10">
-                      {pagedBattles.map((b) => {
+                      {(fetchLimit <= 5 ? filtered.slice(0, 5) : pagedBattles).map((b) => {
                         const s = String(b.status || "").toUpperCase();
                         return (
                           <div
@@ -458,12 +476,12 @@ export default function Dashboard() {
                   )}
                 </div>
 
-                {/* ✅ Pagination shown ONLY when > 5 */}
-                {historyLoaded && !loading && totalItems > 0 && pageSize > 5 && (
+                {/* ✅ Pagination only for 20/50 mode */}
+                {showPagination && (
                   <div className="mt-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                     <div className="text-xs text-white/50">
                       Showing <b>{pageStart + 1}</b>–<b>{Math.min(pageEnd, totalItems)}</b> of{" "}
-                      <b>{totalItems}</b>
+                      <b>{totalItems}</b> • <b>5</b> per page
                     </div>
 
                     <div className="flex items-center gap-2">
@@ -504,7 +522,7 @@ export default function Dashboard() {
               <li>• Create a room and share code with your friend.</li>
               <li>• Join a room using the code.</li>
               <li>• History loads 5 by default for speed.</li>
-              <li>• Load 20/50 to enable paging.</li>
+              <li>• Load 20/50 to enable paging (5 per page).</li>
             </ul>
 
             <button
