@@ -7,22 +7,35 @@ let currentToken = null;
 export function makeSocket(token) {
   if (!token) return null;
 
-  // if token changed (logout/login), recreate
+  // recreate only if token changed
   if (socket && currentToken !== token) {
-    socket.removeAllListeners();
-    socket.disconnect();
+    try {
+      socket.removeAllListeners();
+      socket.disconnect();
+    } catch {}
     socket = null;
     currentToken = null;
   }
 
   if (!socket) {
     currentToken = token;
+
     socket = io(import.meta.env.VITE_GATEWAY_URL, {
-      transports: ["websocket"],
+      // ✅ allow fallback
+      transports: ["polling", "websocket"],
       auth: { token },
+
+      withCredentials: true,
+
       reconnection: true,
-      reconnectionAttempts: 10,
-      reconnectionDelay: 400,
+      reconnectionAttempts: 20,
+      reconnectionDelay: 600,
+      timeout: 20000,
+    });
+
+    // optional: helps debugging
+    socket.on("connect_error", (e) => {
+      console.log("socket connect_error:", e?.message, e);
     });
   }
 
@@ -30,10 +43,11 @@ export function makeSocket(token) {
 }
 
 export function destroySocket() {
-  if (socket) {
+  if (!socket) return;
+  try {
     socket.removeAllListeners();
     socket.disconnect();
-    socket = null;
-    currentToken = null;
-  }
+  } catch {}
+  socket = null;
+  currentToken = null;
 }
