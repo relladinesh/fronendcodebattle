@@ -4,7 +4,6 @@ import { useAuth } from "../store/auth";
 import { makeSocket } from "../lib/socket";
 
 /* ----------------- Helpers ----------------- */
-
 function formatMMSS(ms) {
   const t = Math.max(0, Math.floor(ms / 1000));
   const m = Math.floor(t / 60);
@@ -13,7 +12,6 @@ function formatMMSS(ms) {
 }
 
 /* ----------------- Premium UI ----------------- */
-
 function GlowBG() {
   return (
     <div className="pointer-events-none absolute inset-0 overflow-hidden">
@@ -36,7 +34,6 @@ function GlassCard({ children, className = "" }) {
 }
 
 /* ----------------- Component ----------------- */
-
 export default function Lobby() {
   const { roomId } = useParams();
   const nav = useNavigate();
@@ -49,52 +46,64 @@ export default function Lobby() {
   const [status, setStatus] = useState("connecting...");
   const [lobbyClosesAtMs, setLobbyClosesAtMs] = useState(0);
   const [timeLeftMs, setTimeLeftMs] = useState(0);
+  const [starting, setStarting] = useState(false);
+
+  const myId = user?.userId || user?.id;
 
   /* ----------------- Socket Logic ----------------- */
-
   useEffect(() => {
     if (!socket) return;
 
-    socket.on("connect", () => setStatus("connected"));
-    socket.on("disconnect", () => setStatus("disconnected"));
-    socket.on("connect_error", (e) => setErr(e?.message || "Socket error"));
-    socket.on("room:error", (m) => setErr(String(m || "Room error")));
+    const onConnect = () => setStatus("connected");
+    const onDisconnect = () => setStatus("disconnected");
+    const onConnectError = (e) => setErr(e?.message || "Socket error");
+    const onRoomError = (m) => setErr(String(m || "Room error"));
 
-    socket.on("room:update", (r) => {
+    const onRoomUpdate = (r) => {
       setRoom(r);
       setErr("");
-    });
+    };
 
-    socket.on("lobby:timer", ({ lobbyClosesAtMs }) => {
+    const onLobbyTimer = ({ lobbyClosesAtMs }) => {
       setLobbyClosesAtMs(Number(lobbyClosesAtMs || 0));
-    });
+    };
 
-    socket.on("battle:started", (startedRoom) => {
+    const onBattleStarted = (startedRoom) => {
       nav(`/battle/${startedRoom.roomId}`);
-    });
+    };
 
-    socket.on("room:cancelled", () => nav("/dashboard"));
+    const onRoomCancelled = () => nav("/dashboard");
+
+    socket.on("connect", onConnect);
+    socket.on("disconnect", onDisconnect);
+    socket.on("connect_error", onConnectError);
+    socket.on("room:error", onRoomError);
+
+    socket.on("room:update", onRoomUpdate);
+    socket.on("lobby:timer", onLobbyTimer);
+    socket.on("battle:started", onBattleStarted);
+    socket.on("room:cancelled", onRoomCancelled);
 
     socket.emit("room:get", { roomId }, (ack) => {
       if (!ack?.ok) setErr(ack?.message || "Room not found");
       else setRoom(ack.room);
     });
 
+    // ✅ cleanup (NO disconnect)
     return () => {
-      return () => {
-  socket.off("connect");
-  socket.off("disconnect");
-  socket.off("connect_error");
-  socket.off("room:error");
-  socket.off("room:update");
-  socket.off("lobby:timer");
-  socket.off("battle:started");
-  socket.off("room:cancelled");
-  // ❌ do NOT disconnect here
-};
+      socket.off("connect", onConnect);
+      socket.off("disconnect", onDisconnect);
+      socket.off("connect_error", onConnectError);
+      socket.off("room:error", onRoomError);
+
+      socket.off("room:update", onRoomUpdate);
+      socket.off("lobby:timer", onLobbyTimer);
+      socket.off("battle:started", onBattleStarted);
+      socket.off("room:cancelled", onRoomCancelled);
     };
   }, [socket, roomId, nav]);
 
+  /* ----------------- Timer UI ----------------- */
   useEffect(() => {
     if (!lobbyClosesAtMs) {
       setTimeLeftMs(0);
@@ -107,25 +116,58 @@ export default function Lobby() {
     return () => clearInterval(id);
   }, [lobbyClosesAtMs]);
 
-  const isFull = !!room && room.players?.length === room.maxPlayers;
+  /* ----------------- Derived Rules ----------------- */
+  const playersCount = Number(room?.players?.length || 0);
+  const maxPlayers = Number(room?.maxPlayers || 0);
+  const minPlayers = Number(room?.minPlayersToStart || 2);
 
+  const isWaiting = String(room?.status || "").toUpperCase() === "WAITING";
+  const isFull = !!room && playersCount === maxPlayers;
+
+  const isHost =
+    !!room?.hostUser?.userId && String(room.hostUser.userId) === String(myId);
+
+  // ✅ host can start only when min <= players < max, and room is WAITING
+  const canHostStart =
+    isWaiting && isHost && playersCount >= minPlayers && playersCount < maxPlayers;
+
+  const startBattle = () => {
+    if (!socket) return;
+    if (!canHostStart) return;
+
+    setStarting(true);
+    setErr("");
+
+    socket.emit("battle:start", { roomId }, (ack) => {
+      setStarting(false);
+      if (!ack?.ok) setErr(ack?.message || "Start failed");
+      // success => battle:started event will navigate
+    });
+  };
+
+  // Optional (still ok)
   const readyMe = () => socket?.emit("player:ready", { roomId, ready: true });
   const notReady = () => socket?.emit("player:ready", { roomId, ready: false });
 
   const showInfo = () => {
     setErr("");
-    if (!isFull) return setErr("Room must be FULL to start");
-    setErr("Battle will auto-start when ALL players click READY ✅");
+    if (!room) return;
+
+    if (isFull) return setErr("Room is FULL ✅ Battle will auto-start now.");
+    if (playersCount < minPlayers)
+      return setErr(`Need minimum ${minPlayers} players to start.`);
+    if (playersCount >= minPlayers && playersCount < maxPlayers) {
+      if (isHost) return setErr("You can start battle now (Host Start ✅).");
+      return setErr("Waiting for host to start battle...");
+    }
   };
 
   /* ----------------- UI ----------------- */
-
   return (
     <div className="relative min-h-[100svh] bg-[#06060b] text-white overflow-hidden">
       <GlowBG />
 
       <div className="relative z-10 max-w-6xl mx-auto px-4 sm:px-6 py-8 space-y-6">
-
         {/* Header */}
         <GlassCard className="p-5 flex flex-col sm:flex-row justify-between gap-4">
           <div>
@@ -133,11 +175,10 @@ export default function Lobby() {
               Battle Lobby
             </div>
             <div className="text-sm text-white/50 mt-1">
-              Room ID: <span className="text-white/80 font-semibold">{roomId}</span>
+              Room ID:{" "}
+              <span className="text-white/80 font-semibold">{roomId}</span>
             </div>
-            {err && (
-              <div className="text-sm text-rose-400 mt-2">{err}</div>
-            )}
+            {err && <div className="text-sm text-rose-400 mt-2">{err}</div>}
           </div>
 
           <div className="flex gap-3 items-center">
@@ -182,16 +223,24 @@ export default function Lobby() {
           </div>
         </GlassCard>
 
-        {/* Ready Section */}
+        {/* Controls */}
         <GlassCard className="p-6 flex flex-col md:flex-row justify-between gap-4">
           <div>
-            <div className="text-lg font-bold">Ready Up</div>
+            <div className="text-lg font-bold">Lobby Controls</div>
             <div className="text-sm text-white/50">
-              Battle starts automatically when everyone is ready.
+              {isFull
+                ? "Room is FULL → battle will auto-start."
+                : `Need min ${minPlayers} players. Host can start when min reached.`}
             </div>
+            {isHost && (
+              <div className="text-xs text-white/40 mt-1">
+                You are the HOST ✅
+              </div>
+            )}
           </div>
 
           <div className="flex flex-wrap gap-3">
+            {/* OPTIONAL: keep ready/not ready */}
             <button
               onClick={readyMe}
               className="h-11 px-5 rounded-2xl bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 font-semibold"
@@ -206,10 +255,29 @@ export default function Lobby() {
               Not Ready
             </button>
 
+            {/* ✅ Host Start Button */}
+            <button
+              onClick={startBattle}
+              disabled={!canHostStart || starting}
+              className="h-11 px-5 rounded-2xl bg-white text-black font-semibold disabled:opacity-60"
+              title={
+                canHostStart
+                  ? "Start battle"
+                  : isFull
+                  ? "Auto-start when full"
+                  : !isHost
+                  ? "Only host can start"
+                  : playersCount < minPlayers
+                  ? `Need min ${minPlayers} players`
+                  : "Waiting..."
+              }
+            >
+              {starting ? "Starting..." : "Start Battle (Host)"}
+            </button>
+
             <button
               onClick={showInfo}
-              disabled={!isFull}
-              className="h-11 px-5 rounded-2xl bg-white text-black font-semibold disabled:opacity-60"
+              className="h-11 px-5 rounded-2xl bg-white/10 border border-white/10 font-semibold"
             >
               Info
             </button>
@@ -218,13 +286,12 @@ export default function Lobby() {
 
         {/* Players + Settings */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-
           {/* Players */}
           <GlassCard className="p-6">
             <div className="flex justify-between mb-4">
               <div className="text-lg font-bold">Players</div>
               <div className="text-sm text-white/50">
-                {room?.players?.length || 0}/{room?.maxPlayers || 0}
+                {playersCount}/{maxPlayers}
               </div>
             </div>
 
@@ -234,7 +301,7 @@ export default function Lobby() {
               <div className="space-y-3">
                 {room.players.map((p) => {
                   const isReady = !!room.ready?.[p.userId];
-                  const isYou = p.userId === (user?.userId || user?.id);
+                  const isYou = String(p.userId) === String(myId);
 
                   return (
                     <div
@@ -244,6 +311,7 @@ export default function Lobby() {
                       <div>
                         <div className="font-semibold">
                           {p.email} {isYou && "(you)"}
+                          {room?.hostUser?.userId === p.userId ? " (host)" : ""}
                         </div>
                         <div className="text-xs text-white/40">{p.userId}</div>
                       </div>
@@ -287,6 +355,14 @@ export default function Lobby() {
                 </div>
                 <div className="bg-black/30 border border-white/10 rounded-xl p-3">
                   Status: <span className="font-semibold">{room.status}</span>
+                </div>
+                <div className="bg-black/30 border border-white/10 rounded-xl p-3">
+                  Min Players:{" "}
+                  <span className="font-semibold">{minPlayers}</span>
+                </div>
+                <div className="bg-black/30 border border-white/10 rounded-xl p-3">
+                  Max Players:{" "}
+                  <span className="font-semibold">{maxPlayers}</span>
                 </div>
               </div>
             )}
