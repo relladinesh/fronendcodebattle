@@ -55,14 +55,7 @@ export default function Navbar() {
           </button>
 
           {/* Optional links (enable if you want) */}
-          <div className="hidden md:flex items-center gap-1">
-            <NavLink to="/dashboard" className={linkClass}>
-              Dashboard
-            </NavLink>
-            <NavLink to="/create-room" className={linkClass}>
-              Create Room
-            </NavLink>
-          </div>
+          
         </div>
 
         {/* Right */}
@@ -87,16 +80,7 @@ export default function Navbar() {
       </div>
 
       {/* Mobile quick links */}
-      <div className="relative md:hidden border-b border-white/10 bg-white/[0.03]">
-        <div className="max-w-7xl mx-auto px-4 py-2 flex gap-2 overflow-x-auto">
-          <NavLink to="/dashboard" className={linkClass}>
-            Dashboard
-          </NavLink>
-          <NavLink to="/create-room" className={linkClass}>
-            Create Room
-          </NavLink>
-        </div>
-      </div>
+      
     </nav>
   );
 }

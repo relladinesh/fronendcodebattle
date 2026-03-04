@@ -648,7 +648,7 @@ export default function BattleEditor() {
               <select
                 value={language_id}
                 onChange={(e) => setLanguageId(Number(e.target.value))}
-                className="w-full sm:w-auto h-11 px-3 rounded-2xl bg-black/30 border border-white/10 outline-none focus:border-fuchsia-400/60"
+                className="w-full sm:w-auto h-11 px-3 rounded-2xl bg-black border border-white/10 outline-none focus:border-fuchsia-400/60"
               >
                 {LANGS.map((l) => (
                   <option key={l.value} value={l.value}>
