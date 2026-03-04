@@ -225,7 +225,7 @@ export default function Lobby() {
               <div className="space-y-3">
                 {room.players.map((p) => {
                   const isReady = !!room.ready?.[p.userId];
-                  const isYou = p.userId === user?.id;
+                  const isYou = p.userId === (user?.userId || user?.id);
 
                   return (
                     <div
