@@ -52,39 +52,64 @@ export default function Lobby() {
 
   /* ----------------- Socket Logic ----------------- */
 
-  useEffect(() => {
-    if (!socket) return;
+useEffect(() => {
+  if (!socket) return;
 
-    socket.on("connect", () => setStatus("connected"));
-    socket.on("disconnect", () => setStatus("disconnected"));
-    socket.on("connect_error", (e) => setErr(e?.message || "Socket error"));
-    socket.on("room:error", (m) => setErr(String(m || "Room error")));
+  socket.on("connect", () => setStatus("connected"));
+  socket.on("disconnect", () => setStatus("disconnected"));
+  socket.on("connect_error", (e) => setErr(e?.message || "Socket error"));
+  socket.on("room:error", (m) => setErr(String(m || "Room error")));
 
-    socket.on("room:update", (r) => {
-      setRoom(r);
+  socket.on("room:update", (r) => {
+    setRoom(r);
+    setErr("");
+
+    // ✅ redirect if started/finished
+    const st = String(r?.status || "").toUpperCase();
+    if (st === "ACTIVE") nav(`/battle/${roomId}`);
+    if (st === "FINISHED" || st === "CANCELLED") nav("/dashboard");
+  });
+
+  socket.on("lobby:timer", ({ lobbyClosesAtMs }) => {
+    setLobbyClosesAtMs(Number(lobbyClosesAtMs || 0));
+  });
+
+  socket.on("battle:started", (startedRoom) => {
+    nav(`/battle/${startedRoom.roomId}`);
+  });
+
+  socket.on("room:cancelled", () => nav("/dashboard"));
+
+  // ✅ IMPORTANT: join room first (required after refresh / direct open)
+  socket.emit("room:join", { roomId }, (ack) => {
+    if (!ack?.ok) {
+      const msg = String(ack?.message || "Join failed");
+      setErr(msg);
+
+      // ✅ if already started, go battle
+      if (msg.toLowerCase().includes("already started")) {
+        return nav(`/battle/${roomId}`);
+      }
+      return;
+    }
+
+    // ✅ after join, fetch fresh state
+    socket.emit("room:get", { roomId }, (ack2) => {
+      if (!ack2?.ok) return setErr(ack2?.message || "Room not found");
+      setRoom(ack2.room);
       setErr("");
+
+      const st = String(ack2.room?.status || "").toUpperCase();
+      if (st === "ACTIVE") nav(`/battle/${roomId}`);
+      if (st === "FINISHED" || st === "CANCELLED") nav("/dashboard");
     });
+  });
 
-    socket.on("lobby:timer", ({ lobbyClosesAtMs }) => {
-      setLobbyClosesAtMs(Number(lobbyClosesAtMs || 0));
-    });
-
-    socket.on("battle:started", (startedRoom) => {
-      nav(`/battle/${startedRoom.roomId}`);
-    });
-
-    socket.on("room:cancelled", () => nav("/dashboard"));
-
-    socket.emit("room:get", { roomId }, (ack) => {
-      if (!ack?.ok) setErr(ack?.message || "Room not found");
-      else setRoom(ack.room);
-    });
-
-    return () => {
-      socket.off();
-      socket.disconnect();
-    };
-  }, [socket, roomId, nav]);
+  return () => {
+    socket.off();
+    socket.disconnect();
+  };
+}, [socket, roomId, nav]);
 
   useEffect(() => {
     if (!lobbyClosesAtMs) {
