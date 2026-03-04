@@ -138,9 +138,13 @@ export default function Dashboard() {
     s.on("battle:started", (startedRoom) => nav(`/battle/${startedRoom.roomId}`));
 
     return () => {
-      s.off();
-      s.disconnect();
-      socketRef.current = null;
+      return () => {
+  s.off("connect_error");
+  s.off("room:error");
+  s.off("room:cancelled");
+  s.off("battle:started");
+  // ❌ do NOT disconnect here
+};
     };
   }, [token, nav]);
 

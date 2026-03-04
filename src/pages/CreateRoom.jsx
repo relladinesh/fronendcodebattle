@@ -70,9 +70,13 @@ export default function CreateRoom() {
     socket.on("room:error", (msg) => setErr(String(msg || "Room error")));
 
     return () => {
-      socket.off();
-      socket.disconnect();
-      socketRef.current = null;
+      return () => {
+  socket.off("connect");
+  socket.off("disconnect");
+  socket.off("connect_error");
+  socket.off("room:error");
+  // ❌ do NOT disconnect here
+};
     };
   }, [token]);
 

@@ -81,8 +81,17 @@ export default function Lobby() {
     });
 
     return () => {
-      socket.off();
-      socket.disconnect();
+      return () => {
+  socket.off("connect");
+  socket.off("disconnect");
+  socket.off("connect_error");
+  socket.off("room:error");
+  socket.off("room:update");
+  socket.off("lobby:timer");
+  socket.off("battle:started");
+  socket.off("room:cancelled");
+  // ❌ do NOT disconnect here
+};
     };
   }, [socket, roomId, nav]);
 
