@@ -82,7 +82,7 @@ function FeatureCard({ icon: Icon, title, desc }) {
       </div>
 
       <div className="relative z-10 flex items-start gap-4">
-        <div className="flex h-12 w-12 items-center justify-center rounded-xl border border-white/10 bg-white/10">
+        <div className="flex h-12 w-12 items-center justify-center rounded-xl border border-white/10 bg-white/10 p-2">
           <Icon className="h-6 w-6 text-fuchsia-200" />
         </div>
         <div>
@@ -164,14 +164,14 @@ export default function Landing() {
         </motion.div>
 
         <motion.button
-          initial="hidden"
-          animate="visible"
-          variants={fadeUp(0.1)}
-          onClick={() => navigate("/login")}
-          className="inline-flex items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-fuchsia-500 to-indigo-500 px-6 py-3 font-semibold shadow-xl shadow-fuchsia-500/20 hover:opacity-95 active:scale-[0.98]"
-        >
-          Login / Register <ArrowRight className="h-4 w-4" />
-        </motion.button>
+  initial="hidden"
+  animate="visible"
+  variants={fadeUp(0.1)}
+  onClick={() => navigate("/login")}
+  className="inline-flex  sm:w-auto items-center justify-center gap-2   rounded-2xl bg-gradient-to-r from-fuchsia-500 to-indigo-500   px-5 sm:px-6 py-3 font-semibold   shadow-xl shadow-fuchsia-500/20 hover:opacity-95 active:scale-[0.98]"
+>
+  Login  <ArrowRight className="h-4 w-4" />
+</motion.button>
       </header>
 
       {/* Hero */}
