@@ -183,7 +183,7 @@ export default function CreateRoom() {
               <div className="md:col-span-2">
                 <Field label="Topic" hint="Choose the topic set for random problems.">
                   <select
-                    className="w-full h-12 px-4 rounded-2xl bg-black/30 border border-white/10 outline-none focus:border-fuchsia-400/60"
+                    className="w-full h-12 px-4 rounded-2xl bg-black border border-white/10 outline-none focus:border-fuchsia-400/60"
                     value={topic}
                     onChange={(e) => setTopic(e.target.value)}
                   >

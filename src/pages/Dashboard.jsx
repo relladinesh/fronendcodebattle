@@ -3,6 +3,16 @@ import { useNavigate } from "react-router-dom";
 import { getRecentBattlesApi } from "../api/historyApi";
 import { useAuth } from "../store/auth";
 import { makeSocket } from "../lib/socket";
+import {
+  Swords,
+  Zap,
+  ShieldCheck,
+  Users,
+  Trophy,
+  Code2,
+  Sparkles,
+  ArrowRight,
+} from "lucide-react";
 import LogoutButton from "../components/logout/logout";
 
 /* ---------------- Premium UI bits ---------------- */
@@ -240,25 +250,8 @@ export default function Dashboard() {
     <div className="relative min-h-[100svh] bg-[#06060b] text-white overflow-hidden">
       <GlowBG />
 
-      {/* Top bar */}
-      <div className="relative z-10 border-b border-white/10 bg-black/30 backdrop-blur">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-4 flex items-center justify-between gap-4">
-          <button
-            onClick={() => nav("/dashboard")}
-            className="text-lg sm:text-xl font-extrabold tracking-tight hover:text-white/90"
-          >
-            CodeBattle
-          </button>
-
-          <div className="flex items-center gap-3">
-            <div className="hidden sm:block text-sm text-white/60 max-w-[40vw] truncate">
-              {user?.username || user?.email}
-            </div>
-            <LogoutButton />
-          </div>
-        </div>
-      </div>
-
+      
+      
       {/* Content */}
       <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 py-6 space-y-5">
         {/* Actions row */}

@@ -1,15 +1,19 @@
 import { NavLink, useNavigate } from "react-router-dom";
 import { useAuth } from "../../store/auth";
 import LogoutButton from "../logout/logout";
+import {
+  Swords,
+ 
+} from "lucide-react";
 
 function BrandMark() {
   return (
     <div className="relative">
       <div className="absolute -inset-2 rounded-2xl bg-gradient-to-r from-fuchsia-500/25 to-indigo-500/25 blur-xl" />
       <div className="relative flex items-center gap-2">
-        <div className="h-9 w-9 rounded-2xl bg-white/10 border border-white/10 grid place-items-center">
-          <span className="text-sm font-black">CB</span>
-        </div>
+        <div className="flex h-10 w-10 items-center justify-center rounded-2xl border border-white/10 bg-white/10">
+            <Swords className="h-5 w-5 text-fuchsia-200" />
+          </div>
         <div className="leading-tight">
           <div className="text-base font-extrabold tracking-tight">CodeBattle</div>
           <div className="text-[11px] text-white/45">Realtime coding battles</div>

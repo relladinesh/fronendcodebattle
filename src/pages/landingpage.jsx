@@ -37,23 +37,25 @@ const floaty = {
 function GlowBG() {
   return (
     <div className="pointer-events-none absolute inset-0 overflow-hidden">
+
       {/* soft gradient blobs */}
       <div className="absolute -top-40 -left-40 h-[520px] w-[520px] rounded-full bg-fuchsia-500/25 blur-3xl" />
       <div className="absolute top-10 right-[-120px] h-[520px] w-[520px] rounded-full bg-indigo-500/25 blur-3xl" />
       <div className="absolute bottom-[-220px] left-[20%] h-[520px] w-[520px] rounded-full bg-cyan-500/15 blur-3xl" />
 
-      {/* subtle grid */}
+      {/* SILVER GRID */}
       <div
-        className="absolute inset-0 opacity-[0.10]"
+        className="absolute inset-0 opacity-[0.35]"
         style={{
           backgroundImage:
-            "linear-gradient(to right, rgba(255,255,255,0.22) 1px, transparent 1px), linear-gradient(to bottom, rgba(255,255,255,0.22) 1px, transparent 1px)",
-          backgroundSize: "44px 44px",
+            "linear-gradient(to right, rgba(255,255,255,0.22) 1px, transparent 1px), linear-gradient(to bottom, rgba(192,192,192,0.35) 1px, transparent 1px)",
+          backgroundSize: "42px 42px",
         }}
       />
 
       {/* vignette */}
-      <div className="absolute inset-0 bg-gradient-to-b from-black/30 via-black/40 to-black/70" />
+      <div className="absolute inset-0 bg-gradient-to-b from-black/20 via-black/30 to-black/60" />
+
     </div>
   );
 }
@@ -329,13 +331,7 @@ export default function Landing() {
             </div>
 
             {/* floating mini pill */}
-            <motion.div
-              animate={{ y: [0, -8, 0] }}
-              transition={{ duration: 3.2, repeat: Infinity, ease: "easeInOut" }}
-              className="absolute -bottom-4 left-6 rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs text-white/70 backdrop-blur"
-            >
-              ⚡ Ultra-smooth real-time experience
-            </motion.div>
+           
           </motion.div>
         </div>
 

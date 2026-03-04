@@ -558,12 +558,7 @@ export default function BattleEditor() {
               </div>
 
               <div className="flex gap-2">
-                <button
-                  onClick={() => setShowLeaderboard(true)}
-                  className="h-11 px-4 rounded-2xl bg-white/10 border border-white/10 hover:bg-white/15 font-semibold"
-                >
-                  Leaderboard
-                </button>
+                
 
                 <button
                   onClick={() => {
@@ -668,6 +663,7 @@ export default function BattleEditor() {
                 height="55vh"
                 language={language_id === 62 ? "java" : "python"}
                 value={source_code}
+                theme="vs-dark"
                 onMount={(editor) => {
                   editorRef.current = editor;
                   attachMonacoGuards(editor);
@@ -690,15 +686,7 @@ export default function BattleEditor() {
                 {submitting ? "Submitting..." : "Submit"}
               </button>
 
-              <button
-                onClick={() => {
-                  setSubmitResult(null);
-                  setErr("");
-                }}
-                className="w-full sm:w-auto h-12 px-5 rounded-2xl bg-white/10 border border-white/10 hover:bg-white/15 font-semibold"
-              >
-                Clear Result
-              </button>
+              
             </div>
 
             <div className="rounded-2xl border border-white/10 bg-black/30 p-4">
